@@ -29,6 +29,21 @@ Required attribution: `Model created with Meshy – CC BY 4.0 License`.
 
 The later Pro upgrade enabled the download. It does not change the recorded creation-time license for this asset.
 
-## V3 limits
+## Meshy humanoid rig and locomotion
 
-This is a static tutorial asset. Existing root-level walk, attack, hit, and death feedback remains in code. The export has no skeleton or authored clips. One embedded metallic-roughness texture is 4096 by 4096, so texture compression and a 2K cap remain future production work. The asset must not be called production-ready until the remaining DCC, performance, and target-runtime gates pass.
+- Rigging route: Meshy web workspace, Humanoid character type, automatic joint markers reviewed before submission
+- Character height entered in Meshy: 1.7 m; runtime adapter normalizes the result to 1.8 world units
+- Credit use: 0 credits; the account balance remained at 1,100 before and after the web rig task
+- Download archive: `Meshy_AI_Obsidian_Warhorn_biped.zip`
+- Shipping animated export: `public/assets/enemies/crystal-brute-animated.glb`
+- Animated SHA-256: `18fc8b237cbd978ffabdd9bb68d5d6d5ea0f9632b577e9e8ad674d5ea9bdafd0`
+- Animated result: 10,188 triangles, 7,308 vertices, one mesh, one material, one skin, and two embedded 2048 by 2048 PNG textures
+- Included clips: `Walking` and `Running`; the game uses `Walking`
+- The walk loops in place. Enemy travel remains owned by the outer `EnemyVisual` gameplay root.
+- The original static V3 GLB remains as the first fallback, followed by the procedural enemy.
+
+The Meshy rig stores centimeter-based bones under an armature root scaled to `0.01`. The Three.js adapter must update the cloned world matrices before measuring bounds and must multiply, not replace, the model root scale. This preserves the skeleton's unit conversion while normalizing the visible character height.
+
+## Remaining limits
+
+The authored walk now replaces the former root-level walk bob for the generated model. Existing root-level attack, hit, and death feedback remains in code because this tutorial iteration adds locomotion only. The asset must not be called production-ready until the remaining DCC and formal performance gates pass.

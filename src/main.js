@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
 import './style.css';
 
 const GAME_DURATION = 60;
@@ -9,17 +10,19 @@ const PLAYER_SPEED = 7.5;
 const FIRE_INTERVAL = 0.32;
 const PROJECTILE_SPEED = 24;
 const PROJECTILE_LIFETIME = 2.3;
-const ENEMY_ASSET_URL = '/assets/enemies/crystal-brute.glb';
+const ENEMY_ANIMATED_ASSET_URL = '/assets/enemies/crystal-brute-animated.glb';
+const ENEMY_STATIC_ASSET_URL = '/assets/enemies/crystal-brute.glb';
 
 class EnemyVisual extends THREE.Group {
   static HEIGHT = 1.8;
   static RADIUS = 0.55;
 
-  constructor(modelTemplate = null) {
+  constructor(modelTemplate = null, animations = []) {
     super();
     this.state = 'walk';
     this.stateTime = 0;
     this.usesGeneratedModel = false;
+    this.usesSkeletalAnimation = false;
     this.instanceMaterials = [];
     this.content = new THREE.Group();
     this.placeholder = new THREE.Group();
@@ -69,13 +72,13 @@ class EnemyVisual extends THREE.Group {
     this.shadow.position.y = 0.015;
     this.add(this.shadow);
 
-    if (modelTemplate) this.applyModel(modelTemplate);
+    if (modelTemplate) this.applyModel(modelTemplate, animations);
   }
 
-  applyModel(modelTemplate) {
+  applyModel(modelTemplate, animations = []) {
     if (this.usesGeneratedModel) return;
 
-    const model = modelTemplate.clone(true);
+    const model = cloneSkeleton(modelTemplate);
     model.traverse((child) => {
       if (!child.isMesh) return;
       child.castShadow = true;
@@ -95,10 +98,11 @@ class EnemyVisual extends THREE.Group {
       child.material = Array.isArray(child.material) ? materials : materials[0];
     });
 
+    model.updateMatrixWorld(true);
     const bounds = new THREE.Box3().setFromObject(model);
     const size = bounds.getSize(new THREE.Vector3());
     const scale = EnemyVisual.HEIGHT / size.y;
-    model.scale.setScalar(scale);
+    model.scale.multiplyScalar(scale);
     bounds.setFromObject(model);
     const center = bounds.getCenter(new THREE.Vector3());
     model.position.set(-center.x, -bounds.min.y, -center.z);
@@ -107,6 +111,14 @@ class EnemyVisual extends THREE.Group {
     this.content.add(model);
     this.placeholder.visible = false;
     this.usesGeneratedModel = true;
+
+    const walkClip = THREE.AnimationClip.findByName(animations, 'Walking');
+    if (walkClip) {
+      this.mixer = new THREE.AnimationMixer(model);
+      this.walkAction = this.mixer.clipAction(walkClip);
+      this.walkAction.play();
+      this.usesSkeletalAnimation = true;
+    }
   }
 
   setHitHighlight(active) {
@@ -130,15 +142,19 @@ class EnemyVisual extends THREE.Group {
     this.content.position.set(0, 0, 0);
     this.content.rotation.set(0, 0, 0);
     this.body.rotation.x = 0;
+    if (this.walkAction) this.walkAction.paused = state !== 'walk';
   }
 
   update(delta, elapsed) {
     this.stateTime += delta;
+    this.mixer?.update(delta);
 
     if (this.state === 'walk') {
-      this.content.position.y = Math.sin(elapsed * 10) * 0.045;
-      this.head.rotation.z = Math.sin(elapsed * 7) * 0.045;
-      this.content.rotation.z = Math.sin(elapsed * 10) * 0.025;
+      if (!this.usesSkeletalAnimation) {
+        this.content.position.y = Math.sin(elapsed * 10) * 0.045;
+        this.head.rotation.z = Math.sin(elapsed * 7) * 0.045;
+        this.content.rotation.z = Math.sin(elapsed * 10) * 0.025;
+      }
     } else if (this.state === 'attack') {
       const strike = Math.sin(Math.min(1, this.stateTime / 0.48) * Math.PI);
       this.content.rotation.x = strike * 0.32;
@@ -162,6 +178,8 @@ class EnemyVisual extends THREE.Group {
   }
 
   dispose() {
+    this.mixer?.stopAllAction();
+    if (this.mixer && this.model) this.mixer.uncacheRoot(this.model);
     this.placeholder.traverse((child) => {
       child.geometry?.dispose();
       if (Array.isArray(child.material)) child.material.forEach((material) => material.dispose());
@@ -214,8 +232,10 @@ class Game {
     this.score = 0;
     this.running = false;
     this.enemyModelTemplate = null;
+    this.enemyAnimations = [];
     this.enemyAssetStatus = 'loading';
     this.enemyAssetError = null;
+    this.enemyAssetUrl = ENEMY_ANIMATED_ASSET_URL;
 
     this.buildWorld();
     this.installDiagnostics();
@@ -230,11 +250,13 @@ class Game {
       snapshot: () => ({
         gameState: this.running ? 'playing' : 'ready',
         enemyAsset: {
-          url: ENEMY_ASSET_URL,
+          url: this.enemyAssetUrl,
           status: this.enemyAssetStatus,
           error: this.enemyAssetError,
           generatedInstances: this.enemies.filter((enemy) => enemy.visual.usesGeneratedModel).length,
+          animatedInstances: this.enemies.filter((enemy) => enemy.visual.usesSkeletalAnimation).length,
           fallbackInstances: this.enemies.filter((enemy) => !enemy.visual.usesGeneratedModel).length,
+          clips: this.enemyAnimations.map((clip) => clip.name),
         },
         activeEnemies: this.enemies.length,
         renderer: {
@@ -249,25 +271,47 @@ class Game {
 
   loadEnemyAsset() {
     const loader = new GLTFLoader();
+    const applyAsset = (gltf, status, url) => {
+      this.enemyModelTemplate = gltf.scene;
+      this.enemyAnimations = gltf.animations || [];
+      this.enemyAssetStatus = status;
+      this.enemyAssetError = null;
+      this.enemyAssetUrl = url;
+      for (const enemy of this.enemies) {
+        enemy.visual.applyModel(this.enemyModelTemplate, this.enemyAnimations);
+      }
+    };
+
+    const loadStaticFallback = (animatedError) => {
+      loader.load(
+        ENEMY_STATIC_ASSET_URL,
+        (gltf) => {
+          if (!gltf.scene) throw new Error('The static enemy GLB contained no scene.');
+          applyAsset(gltf, 'loaded-static-fallback', ENEMY_STATIC_ASSET_URL);
+          this.enemyAssetError = animatedError;
+          console.warn(`Animated enemy unavailable; using the static GLB. ${animatedError}`);
+        },
+        undefined,
+        (error) => {
+          this.enemyAssetStatus = 'procedural-fallback';
+          this.enemyAssetError = error?.message || animatedError || 'Enemy GLBs could not be loaded.';
+          console.warn(`Enemy assets unavailable; using the procedural fallback. ${this.enemyAssetError}`);
+        },
+      );
+    };
+
     loader.load(
-      ENEMY_ASSET_URL,
+      ENEMY_ANIMATED_ASSET_URL,
       (gltf) => {
-        if (!gltf.scene) {
-          this.enemyAssetStatus = 'fallback';
-          this.enemyAssetError = 'The GLB contained no scene.';
+        const walkClip = THREE.AnimationClip.findByName(gltf.animations, 'Walking');
+        if (!gltf.scene || !walkClip) {
+          loadStaticFallback('The animated GLB did not contain a scene and Walking clip.');
           return;
         }
-        this.enemyModelTemplate = gltf.scene;
-        this.enemyAssetStatus = 'loaded';
-        this.enemyAssetError = null;
-        for (const enemy of this.enemies) enemy.visual.applyModel(this.enemyModelTemplate);
+        applyAsset(gltf, 'loaded-animated', ENEMY_ANIMATED_ASSET_URL);
       },
       undefined,
-      (error) => {
-        this.enemyAssetStatus = 'fallback';
-        this.enemyAssetError = error?.message || 'The enemy GLB could not be loaded.';
-        console.warn(`Enemy asset unavailable; using the procedural fallback. ${this.enemyAssetError}`);
-      },
+      (error) => loadStaticFallback(error?.message || 'The animated enemy GLB could not be loaded.'),
     );
   }
 
@@ -480,7 +524,7 @@ class Game {
 
   spawnEnemy() {
     const angle = Math.random() * Math.PI * 2;
-    const visual = new EnemyVisual(this.enemyModelTemplate);
+    const visual = new EnemyVisual(this.enemyModelTemplate, this.enemyAnimations);
     visual.position.set(Math.cos(angle) * ARENA_RADIUS, 0, Math.sin(angle) * ARENA_RADIUS);
     visual.rotation.y = Math.atan2(-visual.position.x, -visual.position.z);
     this.scene.add(visual);

@@ -12,7 +12,7 @@
     "id": "crystal-brute",
     "name": "Crystal Brute",
     "category": "character",
-    "purpose": "Replace the procedural enemy visual in the V3 tutorial checkpoint without changing gameplay rules.",
+    "purpose": "Use the approved Meshy enemy with a simple walking animation without changing gameplay rules.",
     "status": "engine-integration",
     "owner": "Alex Morris",
     "concept_references": [
@@ -24,11 +24,11 @@
     "source": {
       "method": "hybrid",
       "provider": "Meshy",
-      "model_or_pack": "Meshy 7 High Detail image-to-3D with PBR texture and fixed-count remesh",
+      "model_or_pack": "Meshy 7 High Detail image-to-3D with PBR texture, fixed-count remesh, Humanoid auto-rig, and Meshy locomotion clips",
       "version": "Meshy 7",
       "source_url": "https://www.meshy.ai/workspace",
       "prompt_or_brief_path": "docs/assets/crystal-brute-production-notes.md",
-      "seed_or_task_id": "source 01a009c6-b235-711d-8c7e-4f921aff4bdf; texture 01a009cc-8d29-71f7-ab28-e763c70cd71b; remesh 01a009d1-3f50-72ea-85c6-133881e1b5f5",
+      "seed_or_task_id": "source 01a009c6-b235-711d-8c7e-4f921aff4bdf; texture 01a009cc-8d29-71f7-ab28-e763c70cd71b; remesh 01a009d1-3f50-72ea-85c6-133881e1b5f5; Humanoid web rig task ID not exposed in the downloaded archive",
       "acquired_at": "2026-08-16",
       "purchase_record_path": ""
     },
@@ -49,12 +49,10 @@
       "triangle_count": 10188,
       "material_count": 1,
       "texture_sets": [
-        "2048x2048 normal PNG",
-        "2048x2048 base-color PNG",
-        "4096x4096 metallic-roughness PNG"
+        "Two embedded 2048x2048 PNG textures in the animated GLB"
       ],
-      "rig_type": "none",
-      "animation_clips": [],
+      "rig_type": "Meshy Humanoid skin with 24 animation target nodes",
+      "animation_clips": ["Walking", "Running"],
       "lod_count": 1,
       "collider": "Existing gameplay sphere radius 0.55; not derived from the render mesh.",
       "scale_units": "Runtime-normalized to 1.8 Three.js world units tall",
@@ -74,8 +72,8 @@
       },
       "source_quality": {
         "status": "pass",
-        "evidence": ["10,188 triangles", "7,306 vertices", "one mesh", "one material", "PBR texture set", "Meshy viewer front inspection"],
-        "notes": "Static silhouette and texture were accepted for V3. Deformation topology is untested because the asset is not rigged."
+        "evidence": ["10,188 triangles", "7,308 vertices", "one skinned mesh", "one material", "two embedded 2048x2048 textures", "Meshy viewer front inspection"],
+        "notes": "The V3 silhouette and texture remain intact after the Meshy Humanoid rig."
       },
       "dcc_cleanup": {
         "status": "pending",
@@ -83,19 +81,19 @@
         "notes": "No Blender source or manual UV/topology cleanup exists. The 4096 metallic-roughness texture should be reduced for production."
       },
       "rig_and_motion": {
-        "status": "not_applicable",
-        "evidence": ["V3 uses code-driven root-level walk, attack, hit, and death feedback"],
-        "notes": "A skeleton and authored clips are outside the signed V3 boundary."
+        "status": "pass",
+        "evidence": ["Meshy Humanoid rig preview", "Walking and Running clips embedded in the GLB", "Walking clip advanced through an independent Three.js AnimationMixer for every spawned enemy", "In-place hip translation returned to its starting position at the loop seam"],
+        "notes": "The game uses the authored Walking clip. Attack, hit, and death remain root-level code feedback for this tutorial iteration."
       },
       "engine_import": {
         "status": "pass",
-        "evidence": ["Vite production build passed", "GLTFLoader loaded the GLB over HTTP", "No required-request, page, console-error, or WebGL failure was observed"],
-        "notes": "EnemyVisual measures the mesh, grounds it, clones per-instance materials, and keeps gameplay state outside the render asset."
+        "evidence": ["Vite production build passed", "GLTFLoader loaded the animated GLB over HTTP", "SkeletonUtils created independent skinned instances", "Every animated enemy received its own AnimationMixer", "No required-request, page, console-error, or WebGL failure was observed"],
+        "notes": "EnemyVisual updates cloned world matrices before normalizing height, preserves Meshy's 0.01 armature scale, grounds the mesh, and keeps gameplay travel outside the walk clip."
       },
       "game_camera": {
         "status": "pass",
-        "evidence": ["Generated enemies were visible in the real arena camera", "Real mouse aiming and firing produced five or more kills", "Hit, death, crystal attack, failure, and restart paths were observed"],
-        "notes": "A low purple emissive fill was added in the visual adapter because the original charcoal texture was too dark against the night arena."
+        "evidence": ["Rigged enemies remained 1.8 world units tall and visible in the real arena camera", "The Walking clip advanced during active play", "The V3 combat, failure, and restart paths remain owned outside the asset adapter"],
+        "notes": "The lighter V3 arena and low purple emissive fill preserve the charcoal monster's gameplay readability."
       },
       "runtime_performance": {
         "status": "pending",
@@ -111,8 +109,8 @@
     "outputs": {
       "original_source_path": "public/assets/enemies/crystal-brute.glb",
       "dcc_source_path": "",
-      "clean_export_path": "public/assets/enemies/crystal-brute.glb",
-      "engine_asset_path": "public/assets/enemies/crystal-brute.glb",
+      "clean_export_path": "public/assets/enemies/crystal-brute-animated.glb",
+      "engine_asset_path": "public/assets/enemies/crystal-brute-animated.glb",
       "prefab_or_equivalent_path": "src/main.js#EnemyVisual",
       "screenshots_or_turntables": [
         "docs/assets/evidence/crystal-brute-turnaround.png",
@@ -120,7 +118,7 @@
         "docs/assets/evidence/crystal-brute-back.png",
         "docs/assets/evidence/crystal-brute-right.png"
       ],
-      "test_reports": ["2026-08-16 V3 build, normal-asset playtest, missing-asset fallback, failure, and restart proof recorded in the 10x-os scope"]
+      "test_reports": ["2026-08-16 V3 build, normal-asset playtest, missing-asset fallback, failure, and restart proof recorded in the 10x-os scope", "2026-08-16 animated GLB build, scale correction, clip-advance, and active-play proof recorded in the 10x-os scope"]
     }
   },
   "decision": {
