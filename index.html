@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#090c18" />
+    <title>Defend the Crystal</title>
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="game" aria-label="Defend the Crystal game"></canvas>
+
+      <header class="hud" aria-live="polite">
+        <div class="brand">
+          <span class="eyebrow">NIGHT 01</span>
+          <strong>DEFEND THE CRYSTAL</strong>
+        </div>
+        <div class="stats">
+          <div class="stat">
+            <span>CRYSTAL</span>
+            <div class="meter"><i id="health-bar"></i></div>
+            <b id="health-value">100</b>
+          </div>
+          <div class="stat timer">
+            <span>SURVIVE</span>
+            <b id="timer">1:00</b>
+          </div>
+          <div class="stat score">
+            <span>SHARDS</span>
+            <b id="score">0</b>
+          </div>
+        </div>
+      </header>
+
+      <div class="crosshair" aria-hidden="true"></div>
+      <p class="controls">WASD TO MOVE <span>•</span> ATTACKS FIRE AUTOMATICALLY</p>
+
+      <section id="overlay" class="overlay">
+        <div class="panel">
+          <span class="kicker">A ONE-MINUTE SURVIVAL GAME</span>
+          <h1>Defend the<br /><em>Crystal</em></h1>
+          <p>
+            Hold the center. Your guardian attacks the closest creature automatically.
+            Keep the crystal alive until dawn.
+          </p>
+          <button id="start-button" type="button">BEGIN THE NIGHT</button>
+          <small>Move with W A S D or the arrow keys</small>
+        </div>
+      </section>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
+
