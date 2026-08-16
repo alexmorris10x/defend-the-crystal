@@ -16,6 +16,8 @@ npm install
 npm run dev
 ```
 
+Open the local URL printed by Vite, normally <http://127.0.0.1:5173/>. Do not open `index.html` directly: this project uses JavaScript modules that Vite must serve over HTTP.
+
 ## Production build
 
 ```bash
