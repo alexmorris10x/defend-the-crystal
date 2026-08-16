@@ -5,7 +5,7 @@ A small Three.js survival game built as the playable foundation for an AI game-a
 ## Game loop
 
 - Move the guardian with WASD or the arrow keys.
-- The guardian automatically attacks the nearest creature in range.
+- Aim with the mouse and left-click to fire straight shots.
 - Keep the crystal alive for 60 seconds.
 - The game currently uses procedural placeholder geometry.
 

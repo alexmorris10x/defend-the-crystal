@@ -2,10 +2,12 @@ import * as THREE from 'three';
 import './style.css';
 
 const GAME_DURATION = 60;
-const ARENA_RADIUS = 14;
+const ARENA_RADIUS = 26;
+const PLAYER_BOUNDARY = ARENA_RADIUS - 2.4;
 const PLAYER_SPEED = 7.5;
-const ATTACK_RANGE = 7;
-const ATTACK_INTERVAL = 0.42;
+const FIRE_INTERVAL = 0.32;
+const PROJECTILE_SPEED = 24;
+const PROJECTILE_LIFETIME = 2.3;
 
 class EnemyVisual extends THREE.Group {
   static HEIGHT = 1.8;
@@ -103,13 +105,14 @@ class Game {
     this.healthValue = document.querySelector('#health-value');
     this.timerValue = document.querySelector('#timer');
     this.scoreValue = document.querySelector('#score');
+    this.crosshair = document.querySelector('.crosshair');
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x080b16);
-    this.scene.fog = new THREE.FogExp2(0x080b16, 0.027);
+    this.scene.fog = new THREE.FogExp2(0x080b16, 0.017);
 
-    this.camera = new THREE.PerspectiveCamera(42, 1, 0.1, 80);
-    this.camera.position.set(0, 18, 19);
+    this.camera = new THREE.PerspectiveCamera(42, 1, 0.1, 120);
+    this.camera.position.set(0, 29, 31);
     this.camera.lookAt(0, 0, 0);
 
     this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true });
@@ -122,6 +125,10 @@ class Game {
 
     this.clock = new THREE.Clock();
     this.keys = new Set();
+    this.raycaster = new THREE.Raycaster();
+    this.pointer = new THREE.Vector2();
+    this.aimPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+    this.aimPoint = new THREE.Vector3(0, 0, 0);
     this.enemies = [];
     this.projectiles = [];
     this.particles = [];
@@ -146,10 +153,10 @@ class Game {
     moon.position.set(-8, 14, 7);
     moon.castShadow = true;
     moon.shadow.mapSize.set(1024, 1024);
-    moon.shadow.camera.left = -18;
-    moon.shadow.camera.right = 18;
-    moon.shadow.camera.top = 18;
-    moon.shadow.camera.bottom = -18;
+    moon.shadow.camera.left = -32;
+    moon.shadow.camera.right = 32;
+    moon.shadow.camera.top = 32;
+    moon.shadow.camera.bottom = -32;
     this.scene.add(moon);
 
     const floor = new THREE.Mesh(
@@ -161,10 +168,14 @@ class Game {
     this.scene.add(floor);
 
     const rings = new THREE.Group();
-    for (const radius of [4, 8, 12, 15.2]) {
+    for (const radius of [6, 12, 18, 24, ARENA_RADIUS + 1.2]) {
       const ring = new THREE.Mesh(
         new THREE.RingGeometry(radius - 0.025, radius + 0.025, 96),
-        new THREE.MeshBasicMaterial({ color: radius === 15.2 ? 0x493d70 : 0x292946, transparent: true, opacity: 0.85 }),
+        new THREE.MeshBasicMaterial({
+          color: radius === ARENA_RADIUS + 1.2 ? 0x493d70 : 0x292946,
+          transparent: true,
+          opacity: 0.85,
+        }),
       );
       ring.rotation.x = -Math.PI / 2;
       ring.position.y = 0.012;
@@ -175,13 +186,14 @@ class Game {
     this.addArenaProps();
     this.buildCrystal();
     this.buildPlayer();
+    this.buildAimMarker();
   }
 
   addArenaProps() {
     const stoneMaterial = new THREE.MeshStandardMaterial({ color: 0x282b43, roughness: 0.92 });
-    for (let i = 0; i < 18; i += 1) {
-      const angle = (i / 18) * Math.PI * 2 + (i % 2) * 0.08;
-      const radius = 15.4 + (i % 3) * 0.65;
+    for (let i = 0; i < 28; i += 1) {
+      const angle = (i / 28) * Math.PI * 2 + (i % 2) * 0.08;
+      const radius = ARENA_RADIUS + 1.4 + (i % 3) * 0.65;
       const height = 0.7 + (i % 4) * 0.24;
       const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(0.55 + (i % 3) * 0.12, 0), stoneMaterial);
       rock.position.set(Math.cos(angle) * radius, height * 0.38, Math.sin(angle) * radius);
@@ -260,12 +272,55 @@ class Game {
     this.scene.add(this.player);
   }
 
+  buildAimMarker() {
+    this.aimMarker = new THREE.Mesh(
+      new THREE.RingGeometry(0.22, 0.34, 28),
+      new THREE.MeshBasicMaterial({ color: 0x9feeff, transparent: true, opacity: 0.9, side: THREE.DoubleSide }),
+    );
+    this.aimMarker.rotation.x = -Math.PI / 2;
+    this.aimMarker.position.y = 0.035;
+    this.aimMarker.visible = false;
+    this.scene.add(this.aimMarker);
+  }
+
   bindEvents() {
     window.addEventListener('resize', () => this.resize());
     window.addEventListener('keydown', (event) => this.keys.add(event.code));
     window.addEventListener('keyup', (event) => this.keys.delete(event.code));
-    window.addEventListener('blur', () => this.keys.clear());
+    window.addEventListener('blur', () => {
+      this.keys.clear();
+    });
+    this.canvas.addEventListener('pointermove', (event) => this.updateAimFromPointer(event));
+    this.canvas.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0 || !this.running) return;
+      this.updateAimFromPointer(event);
+      if (this.attackTimer <= 0) {
+        this.fire();
+        this.attackTimer = FIRE_INTERVAL;
+      }
+    });
+    this.canvas.addEventListener('contextmenu', (event) => event.preventDefault());
     this.startButton.addEventListener('click', () => this.start());
+  }
+
+  updateAimFromPointer(event) {
+    const bounds = this.canvas.getBoundingClientRect();
+    this.crosshair.style.left = `${event.clientX}px`;
+    this.crosshair.style.top = `${event.clientY}px`;
+    this.pointer.set(
+      ((event.clientX - bounds.left) / bounds.width) * 2 - 1,
+      -((event.clientY - bounds.top) / bounds.height) * 2 + 1,
+    );
+    this.raycaster.setFromCamera(this.pointer, this.camera);
+    if (!this.raycaster.ray.intersectPlane(this.aimPlane, this.aimPoint)) return;
+
+    const distance = Math.hypot(this.aimPoint.x, this.aimPoint.z);
+    if (distance > ARENA_RADIUS) {
+      this.aimPoint.x *= ARENA_RADIUS / distance;
+      this.aimPoint.z *= ARENA_RADIUS / distance;
+    }
+    this.aimMarker.position.set(this.aimPoint.x, 0.035, this.aimPoint.z);
+    this.aimMarker.visible = this.running;
   }
 
   start() {
@@ -276,6 +331,9 @@ class Game {
     this.crystalHealth = 100;
     this.score = 0;
     this.player.position.set(0, 0, 4.2);
+    this.aimPoint.set(0, 0, 0);
+    this.aimMarker.position.set(0, 0.035, 0);
+    this.aimMarker.visible = true;
     this.running = true;
     this.overlay.classList.add('hidden');
     this.updateHud();
@@ -317,52 +375,43 @@ class Game {
     if (movement.lengthSq() > 0) {
       movement.normalize();
       this.player.position.addScaledVector(movement, PLAYER_SPEED * delta);
-      this.player.rotation.y = Math.atan2(movement.x, movement.z);
       this.player.position.y = Math.abs(Math.sin(this.elapsed * 11)) * 0.05;
     } else {
       this.player.position.y = 0;
     }
 
     const distance = Math.hypot(this.player.position.x, this.player.position.z);
-    if (distance > 11.9) {
-      this.player.position.x *= 11.9 / distance;
-      this.player.position.z *= 11.9 / distance;
+    if (distance > PLAYER_BOUNDARY) {
+      this.player.position.x *= PLAYER_BOUNDARY / distance;
+      this.player.position.z *= PLAYER_BOUNDARY / distance;
     }
+
+    const aimDirection = this.aimPoint.clone().sub(this.player.position);
+    aimDirection.y = 0;
+    if (aimDirection.lengthSq() > 0.01) this.player.rotation.y = Math.atan2(aimDirection.x, aimDirection.z);
 
     this.attackTimer -= delta;
-    if (this.attackTimer <= 0) {
-      const target = this.findNearestEnemy();
-      if (target) {
-        this.fire(target);
-        this.attackTimer = ATTACK_INTERVAL;
-      }
-    }
   }
 
-  findNearestEnemy() {
-    let nearest = null;
-    let nearestDistance = ATTACK_RANGE;
-    for (const enemy of this.enemies) {
-      if (enemy.dying) continue;
-      const distance = enemy.visual.position.distanceTo(this.player.position);
-      if (distance < nearestDistance) {
-        nearest = enemy;
-        nearestDistance = distance;
-      }
-    }
-    return nearest;
-  }
+  fire() {
+    const direction = this.aimPoint.clone().sub(this.player.position);
+    direction.y = 0;
+    if (direction.lengthSq() < 0.01) return;
+    direction.normalize();
 
-  fire(target) {
     const mesh = new THREE.Mesh(
       new THREE.SphereGeometry(0.11, 8, 6),
       new THREE.MeshBasicMaterial({ color: 0xb9f3ff }),
     );
-    mesh.position.copy(this.player.position).add(new THREE.Vector3(0, 1.05, 0));
+    mesh.position.copy(this.player.position).addScaledVector(direction, 0.7);
+    mesh.position.y = 1.05;
     this.scene.add(mesh);
-    this.projectiles.push({ mesh, target, speed: 18, life: 1.2 });
+    this.projectiles.push({
+      mesh,
+      velocity: direction.multiplyScalar(PROJECTILE_SPEED),
+      life: PROJECTILE_LIFETIME,
+    });
 
-    const direction = target.visual.position.clone().sub(this.player.position);
     this.player.rotation.y = Math.atan2(direction.x, direction.z);
   }
 
@@ -371,20 +420,31 @@ class Game {
       const projectile = this.projectiles[i];
       projectile.life -= delta;
 
-      if (projectile.life <= 0 || projectile.target.dying || !this.enemies.includes(projectile.target)) {
+      if (projectile.life <= 0) {
         this.scene.remove(projectile.mesh);
         this.projectiles.splice(i, 1);
         continue;
       }
 
-      const targetPosition = projectile.target.visual.position.clone().add(new THREE.Vector3(0, 1, 0));
-      const direction = targetPosition.sub(projectile.mesh.position);
-      if (direction.length() < 0.38) {
-        this.hitEnemy(projectile.target);
+      const previousPosition = projectile.mesh.position.clone();
+      projectile.mesh.position.addScaledVector(projectile.velocity, delta);
+      const path = new THREE.Line3(previousPosition, projectile.mesh.position);
+      let hit = null;
+      for (const enemy of this.enemies) {
+        if (enemy.dying) continue;
+        const targetPosition = enemy.visual.position.clone();
+        targetPosition.y = 1;
+        const nearestPoint = path.closestPointToPoint(targetPosition, true, new THREE.Vector3());
+        if (nearestPoint.distanceTo(targetPosition) < EnemyVisual.RADIUS + 0.16) {
+          hit = enemy;
+          break;
+        }
+      }
+
+      if (hit) {
+        this.hitEnemy(hit);
         this.scene.remove(projectile.mesh);
         this.projectiles.splice(i, 1);
-      } else {
-        projectile.mesh.position.addScaledVector(direction.normalize(), projectile.speed * delta);
       }
     }
   }
@@ -481,6 +541,7 @@ class Game {
 
   end(won) {
     this.running = false;
+    this.aimMarker.visible = false;
     const kicker = this.overlay.querySelector('.kicker');
     const title = this.overlay.querySelector('h1');
     const copy = this.overlay.querySelector('p');
@@ -499,6 +560,10 @@ class Game {
 
     this.crystalMesh.rotation.y += delta * 0.75;
     this.crystalMesh.position.y = 1.65 + Math.sin(ambientTime * 2) * 0.08;
+    if (this.aimMarker.visible) {
+      const pulse = 1 + Math.sin(ambientTime * 7) * 0.12;
+      this.aimMarker.scale.setScalar(pulse);
+    }
 
     if (this.running) {
       this.elapsed += delta;
@@ -532,4 +597,3 @@ class Game {
 }
 
 new Game();
-
