@@ -5,8 +5,10 @@ A small Three.js survival game built as the playable foundation for an AI game-a
 ## Game loop
 
 - Move the guardian with WASD or the arrow keys.
-- Aim with the mouse and left-click to fire straight shots.
-- Keep the crystal alive for 60 seconds.
+- Aim with the mouse while the guardian fires straight shots automatically.
+- On touch devices, use the left stick to move and the right stick to aim while firing stays automatic.
+- Survive endless 30-second hordes; each new horde spawns enemies 5% more frequently.
+- Collect random crystal-repair, rapid-fire, and triple-shot power-ups around the arena.
 - Enemies use the Meshy-generated Crystal Brute GLB, with the procedural geometry kept as a load-failure fallback.
 - The player uses the Meshy-generated Prism Ranger GLB and its `Walking` clip, with the original cyan procedural guardian kept as a load-failure fallback.
 

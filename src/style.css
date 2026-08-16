@@ -91,11 +91,13 @@ body {
 }
 
 .timer b,
+.horde b,
 .score b {
   font-size: 22px;
 }
 
 .timer,
+.horde,
 .score {
   display: flex;
   min-width: auto;
@@ -140,6 +142,94 @@ body {
   color: #8e7cff;
 }
 
+.touch-controls {
+  position: fixed;
+  z-index: 6;
+  right: 0;
+  bottom: max(14px, env(safe-area-inset-bottom));
+  left: 0;
+  display: none;
+  align-items: flex-end;
+  justify-content: space-between;
+  padding-right: max(18px, env(safe-area-inset-right));
+  padding-left: max(18px, env(safe-area-inset-left));
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.touch-enabled .touch-controls {
+  display: flex;
+}
+
+.touch-enabled .controls {
+  display: none;
+}
+
+.touch-stick {
+  display: grid;
+  place-items: center;
+  gap: 7px;
+  color: rgb(245 247 255 / 68%);
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.touch-stick__base {
+  position: relative;
+  width: clamp(104px, 27vw, 136px);
+  aspect-ratio: 1;
+  border: 1px solid rgb(255 255 255 / 24%);
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, rgb(159 238 255 / 9%) 0 28%, transparent 29%),
+    rgb(8 12 25 / 38%);
+  box-shadow: inset 0 0 28px rgb(0 0 0 / 24%), 0 8px 28px rgb(5 8 18 / 20%);
+}
+
+.touch-stick__base::before,
+.touch-stick__base::after {
+  position: absolute;
+  content: "";
+  background: rgb(255 255 255 / 12%);
+}
+
+.touch-stick__base::before {
+  top: 50%;
+  right: 14px;
+  left: 14px;
+  height: 1px;
+}
+
+.touch-stick__base::after {
+  top: 14px;
+  bottom: 14px;
+  left: 50%;
+  width: 1px;
+}
+
+.touch-stick__knob {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 42%;
+  aspect-ratio: 1;
+  border: 1px solid rgb(255 255 255 / 48%);
+  border-radius: 50%;
+  background: rgb(171 224 255 / 32%);
+  box-shadow: 0 0 22px rgb(159 238 255 / 20%);
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  will-change: transform;
+}
+
+#aim-stick .touch-stick__knob {
+  background: rgb(255 119 168 / 30%);
+  box-shadow: 0 0 22px rgb(255 107 156 / 20%);
+}
+
 .crosshair {
   position: fixed;
   z-index: 2;
@@ -152,6 +242,98 @@ body {
   box-shadow: 0 0 10px rgb(159 238 255 / 70%);
   pointer-events: none;
   transform: translate(-50%, -50%);
+}
+
+.horde-banner {
+  position: fixed;
+  z-index: 5;
+  top: 21%;
+  left: 50%;
+  display: grid;
+  min-width: 280px;
+  place-items: center;
+  color: #fff;
+  filter: drop-shadow(0 8px 28px rgb(13 9 30 / 55%));
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -20px) scale(0.88);
+  transition: opacity 220ms ease, transform 320ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.horde-banner.visible {
+  opacity: 1;
+  transform: translate(-50%, 0) scale(1);
+}
+
+.horde-banner span,
+.horde-banner em {
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 700;
+  letter-spacing: 0.48em;
+  text-indent: 0.48em;
+}
+
+.horde-banner span {
+  color: #d8d3ff;
+}
+
+.horde-banner strong {
+  margin: -5px 0 -8px;
+  color: #ff78a8;
+  font-family: "Archivo Black", sans-serif;
+  font-size: clamp(70px, 10vw, 118px);
+  line-height: 1;
+  text-shadow: 0 0 30px rgb(255 107 156 / 40%);
+}
+
+.horde-banner em {
+  color: #fff0bd;
+}
+
+.pickup-notice,
+.effect-status {
+  position: fixed;
+  z-index: 4;
+  left: 50%;
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+.pickup-notice {
+  top: 18%;
+  padding: 9px 16px;
+  border: 1px solid var(--pickup-color, #fff);
+  border-radius: 999px;
+  color: var(--pickup-color, #fff);
+  background: rgb(8 11 24 / 82%);
+  box-shadow: 0 0 24px color-mix(in srgb, var(--pickup-color, #fff) 35%, transparent);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  opacity: 0;
+  transform: translate(-50%, 12px);
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.pickup-notice.visible {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.effect-status {
+  bottom: 48px;
+  color: #fff0bd;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  opacity: 0;
+  text-shadow: 0 2px 12px #080b18;
+  transition: opacity 160ms ease;
+}
+
+.effect-status.visible {
+  opacity: 1;
 }
 
 .overlay {
@@ -240,6 +422,18 @@ h1 em {
   font-size: 10px;
 }
 
+.touch-help {
+  display: none;
+}
+
+.touch-enabled .desktop-help {
+  display: none;
+}
+
+.touch-enabled .touch-help {
+  display: inline;
+}
+
 @media (max-width: 680px) {
   .hud {
     padding: 16px;
@@ -255,6 +449,10 @@ h1 em {
     gap: 12px;
   }
 
+  .horde-banner {
+    top: 17%;
+  }
+
   .meter {
     width: 88px;
   }
@@ -265,5 +463,15 @@ h1 em {
 
   .panel {
     padding: 34px 24px;
+  }
+}
+
+@media (max-height: 520px) {
+  .touch-stick__base {
+    width: 92px;
+  }
+
+  .touch-controls {
+    bottom: max(8px, env(safe-area-inset-bottom));
   }
 }

@@ -12,7 +12,7 @@
 
       <header class="hud" aria-live="polite">
         <div class="brand">
-          <span class="eyebrow">NIGHT 01</span>
+          <span class="eyebrow">ENDLESS NIGHT</span>
           <strong>DEFEND THE CRYSTAL</strong>
         </div>
         <div class="stats">
@@ -21,9 +21,13 @@
             <div class="meter"><i id="health-bar"></i></div>
             <b id="health-value">100</b>
           </div>
+          <div class="stat horde">
+            <span>HORDE</span>
+            <b id="horde">1</b>
+          </div>
           <div class="stat timer">
-            <span>SURVIVE</span>
-            <b id="timer">1:00</b>
+            <span>TIME</span>
+            <b id="timer">0:00</b>
           </div>
           <div class="stat score">
             <span>SHARDS</span>
@@ -33,18 +37,39 @@
       </header>
 
       <div class="crosshair" aria-hidden="true"></div>
-      <p class="controls">WASD TO MOVE <span>•</span> MOUSE TO AIM <span>•</span> LEFT CLICK TO FIRE</p>
+      <div id="horde-banner" class="horde-banner" aria-live="assertive">
+        <span>HORDE</span>
+        <strong>1</strong>
+        <em>INCOMING</em>
+      </div>
+      <div id="pickup-notice" class="pickup-notice" aria-live="polite"></div>
+      <div id="effect-status" class="effect-status" aria-live="polite"></div>
+      <p class="controls">WASD TO MOVE <span>•</span> MOUSE TO AIM <span>•</span> AUTO FIRE</p>
+
+      <div id="touch-controls" class="touch-controls" aria-hidden="true">
+        <div id="move-stick" class="touch-stick">
+          <div class="touch-stick__base"><i class="touch-stick__knob"></i></div>
+          <b>MOVE</b>
+        </div>
+        <div id="aim-stick" class="touch-stick">
+          <div class="touch-stick__base"><i class="touch-stick__knob"></i></div>
+          <b>AIM</b>
+        </div>
+      </div>
 
       <section id="overlay" class="overlay">
         <div class="panel">
-          <span class="kicker">A ONE-MINUTE SURVIVAL GAME</span>
+          <span class="kicker">ENDLESS HORDE SURVIVAL</span>
           <h1>Defend the<br /><em>Crystal</em></h1>
           <p>
-            Move through the arena, aim with the mouse, and fire with the left mouse button.
-            Keep the crystal alive until dawn.
+            Move through the arena and aim at incoming creatures. Your guardian fires automatically.
+            Collect power-ups and keep the crystal alive for as long as you can.
           </p>
-          <button id="start-button" type="button">BEGIN THE NIGHT</button>
-          <small>Move with W A S D or the arrow keys · Aim and fire with the mouse</small>
+          <button id="start-button" type="button">ENTER THE ARENA</button>
+          <small>
+            <span class="desktop-help">Move with W A S D or the arrow keys · Aim with the mouse · Firing is automatic</span>
+            <span class="touch-help">Left stick to move · Right stick to aim · Firing is automatic</span>
+          </small>
         </div>
       </section>
     </div>

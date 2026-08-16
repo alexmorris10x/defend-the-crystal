@@ -3,16 +3,177 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
 import './style.css';
 
-const GAME_DURATION = 60;
+const HORDE_DURATION = 30;
+const BASE_ENEMY_SPAWN_INTERVAL = 7;
+const HORDE_SPAWN_FREQUENCY_GROWTH = 1.05;
+const MIN_ENEMY_SPAWN_INTERVAL = 0.9;
 const ARENA_RADIUS = 26;
 const PLAYER_BOUNDARY = ARENA_RADIUS - 2.4;
 const PLAYER_SPEED = 7.5;
+const TOUCH_AIM_DISTANCE = 10;
 const FIRE_INTERVAL = 0.32;
+const RAPID_FIRE_INTERVAL = 0.16;
+const POWER_UP_DURATION = 10;
+const POWER_UP_LIFETIME = 15;
+const MAX_POWER_UPS = 2;
 const PROJECTILE_SPEED = 24;
 const PROJECTILE_LIFETIME = 2.3;
 const ENEMY_ANIMATED_ASSET_URL = '/assets/enemies/crystal-brute-animated.glb';
 const ENEMY_STATIC_ASSET_URL = '/assets/enemies/crystal-brute.glb';
 const PLAYER_ANIMATED_ASSET_URL = '/assets/player/prism-ranger-animated.glb';
+
+const POWER_UP_TYPES = {
+  repair: { label: 'CRYSTAL REPAIR', shortLabel: '+25', color: 0x71ff9d },
+  rapid: { label: 'RAPID FIRE', shortLabel: '>>', color: 0xffd66b },
+  triple: { label: 'TRIPLE SHOT', shortLabel: 'x3', color: 0x74ddff },
+};
+
+function formatTime(seconds) {
+  const wholeSeconds = Math.max(0, Math.floor(seconds));
+  const minutes = Math.floor(wholeSeconds / 60);
+  return `${minutes}:${String(wholeSeconds % 60).padStart(2, '0')}`;
+}
+
+function shuffle(values) {
+  const result = [...values];
+  for (let i = result.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
+}
+
+function createPowerUpVisual(type) {
+  const config = POWER_UP_TYPES[type];
+  const group = new THREE.Group();
+  const material = new THREE.MeshStandardMaterial({
+    color: config.color,
+    emissive: config.color,
+    emissiveIntensity: 1.8,
+    roughness: 0.28,
+    metalness: 0.2,
+  });
+  const core = new THREE.Mesh(new THREE.OctahedronGeometry(0.48, 0), material);
+  core.position.y = 0.88;
+  core.castShadow = true;
+  group.add(core);
+
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(0.72, 0.055, 8, 32),
+    new THREE.MeshBasicMaterial({ color: config.color, transparent: true, opacity: 0.8 }),
+  );
+  ring.position.y = 0.45;
+  ring.rotation.x = Math.PI / 2;
+  group.add(ring);
+
+  const glow = new THREE.PointLight(config.color, 2.8, 5, 2);
+  glow.position.y = 1;
+  group.add(glow);
+
+  const labelCanvas = document.createElement('canvas');
+  labelCanvas.width = 256;
+  labelCanvas.height = 80;
+  const context = labelCanvas.getContext('2d');
+  context.fillStyle = 'rgba(7, 10, 24, 0.82)';
+  context.roundRect(4, 4, 248, 72, 18);
+  context.fill();
+  context.strokeStyle = `#${config.color.toString(16).padStart(6, '0')}`;
+  context.lineWidth = 4;
+  context.stroke();
+  context.fillStyle = '#ffffff';
+  context.font = '700 26px monospace';
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+  context.fillText(config.label, 128, 42);
+
+  const label = new THREE.Sprite(
+    new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(labelCanvas), transparent: true, depthTest: false }),
+  );
+  label.position.y = 1.8;
+  label.scale.set(3.4, 1.06, 1);
+  group.add(label);
+  group.userData.core = core;
+  group.userData.ring = ring;
+  return group;
+}
+
+function disposeObject(object) {
+  object.traverse((child) => {
+    child.geometry?.dispose();
+    const materials = Array.isArray(child.material) ? child.material : [child.material];
+    for (const material of materials) {
+      if (!material) continue;
+      material.map?.dispose();
+      material.dispose();
+    }
+  });
+}
+
+class VirtualStick {
+  constructor(element, onChange, preserveValueOnRelease = false) {
+    this.element = element;
+    this.base = element.querySelector('.touch-stick__base');
+    this.knob = element.querySelector('.touch-stick__knob');
+    this.onChange = onChange;
+    this.preserveValueOnRelease = preserveValueOnRelease;
+    this.pointerId = null;
+
+    this.base.addEventListener('pointerdown', (event) => this.begin(event));
+    this.base.addEventListener('pointermove', (event) => this.move(event));
+    this.base.addEventListener('pointerup', (event) => this.end(event));
+    this.base.addEventListener('pointercancel', (event) => this.end(event));
+    this.base.addEventListener('lostpointercapture', (event) => this.end(event));
+  }
+
+  begin(event) {
+    if (this.pointerId !== null) return;
+    event.preventDefault();
+    event.stopPropagation();
+    this.pointerId = event.pointerId;
+    this.base.setPointerCapture(event.pointerId);
+    this.update(event);
+  }
+
+  move(event) {
+    if (event.pointerId !== this.pointerId) return;
+    event.preventDefault();
+    this.update(event);
+  }
+
+  update(event) {
+    const bounds = this.base.getBoundingClientRect();
+    const radius = bounds.width * 0.32;
+    let x = event.clientX - (bounds.left + bounds.width / 2);
+    let y = event.clientY - (bounds.top + bounds.height / 2);
+    const distance = Math.hypot(x, y);
+    if (distance > radius) {
+      x *= radius / distance;
+      y *= radius / distance;
+    }
+
+    const normalizedX = x / radius;
+    const normalizedY = y / radius;
+    const magnitude = Math.hypot(normalizedX, normalizedY);
+    const deadZone = 0.14;
+    const scale = magnitude <= deadZone ? 0 : (magnitude - deadZone) / (1 - deadZone) / magnitude;
+    this.knob.style.transform = `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`;
+    this.onChange(normalizedX * scale, normalizedY * scale);
+  }
+
+  end(event) {
+    if (event.pointerId !== this.pointerId) return;
+    event.preventDefault();
+    this.pointerId = null;
+    this.knob.style.transform = 'translate(-50%, -50%)';
+    if (!this.preserveValueOnRelease) this.onChange(0, 0);
+  }
+
+  reset() {
+    this.pointerId = null;
+    this.knob.style.transform = 'translate(-50%, -50%)';
+    if (!this.preserveValueOnRelease) this.onChange(0, 0);
+  }
+}
 
 class EnemyVisual extends THREE.Group {
   static HEIGHT = 1.8;
@@ -289,8 +450,14 @@ class Game {
     this.healthBar = document.querySelector('#health-bar');
     this.healthValue = document.querySelector('#health-value');
     this.timerValue = document.querySelector('#timer');
+    this.hordeValue = document.querySelector('#horde');
     this.scoreValue = document.querySelector('#score');
     this.crosshair = document.querySelector('.crosshair');
+    this.hordeBanner = document.querySelector('#horde-banner');
+    this.hordeBannerValue = this.hordeBanner.querySelector('strong');
+    this.pickupNotice = document.querySelector('#pickup-notice');
+    this.effectStatus = document.querySelector('#effect-status');
+    this.touchControls = document.querySelector('#touch-controls');
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x718397);
@@ -310,6 +477,10 @@ class Game {
 
     this.clock = new THREE.Clock();
     this.keys = new Set();
+    this.touchMovement = new THREE.Vector2();
+    this.touchAimDirection = new THREE.Vector2(0, -1);
+    this.usingTouchAim = false;
+    this.touchEnabled = window.matchMedia('(hover: none) and (pointer: coarse)').matches || navigator.maxTouchPoints > 0;
     this.raycaster = new THREE.Raycaster();
     this.pointer = new THREE.Vector2();
     this.aimPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
@@ -317,9 +488,17 @@ class Game {
     this.enemies = [];
     this.projectiles = [];
     this.particles = [];
+    this.powerUps = [];
     this.elapsed = 0;
+    this.currentHorde = 1;
+    this.hordeAnnouncementTimer = 0;
     this.spawnTimer = 0;
+    this.powerUpSpawnTimer = 0;
     this.attackTimer = 0;
+    this.rapidFireTimer = 0;
+    this.tripleShotTimer = 0;
+    this.pickupNoticeTimer = 0;
+    this.powerUpBag = [];
     this.crystalHealth = 100;
     this.score = 0;
     this.running = false;
@@ -337,6 +516,7 @@ class Game {
     this.installDiagnostics();
     this.loadEnemyAsset();
     this.loadPlayerAsset();
+    this.setupTouchControls();
     this.bindEvents();
     this.resize();
     this.renderer.setAnimationLoop(() => this.frame());
@@ -363,7 +543,29 @@ class Game {
           animated: this.player.usesSkeletalAnimation,
           clips: this.playerAnimations.map((clip) => clip.name),
         },
+        playerPosition: { x: this.player.position.x, z: this.player.position.z },
+        input: {
+          touchEnabled: this.touchEnabled,
+          touchMovement: { x: this.touchMovement.x, y: this.touchMovement.y },
+          touchAim: { x: this.touchAimDirection.x, y: this.touchAimDirection.y },
+          usingTouchAim: this.usingTouchAim,
+        },
         activeEnemies: this.enemies.length,
+        activeProjectiles: this.projectiles.length,
+        elapsed: this.elapsed,
+        horde: this.currentHorde,
+        spawnInterval: this.getSpawnInterval(),
+        crystalHealth: this.crystalHealth,
+        score: this.score,
+        powerUps: this.powerUps.map((powerUp) => ({
+          type: powerUp.type,
+          life: powerUp.life,
+          position: { x: powerUp.visual.position.x, z: powerUp.visual.position.z },
+        })),
+        effects: {
+          rapidFire: this.rapidFireTimer,
+          tripleShot: this.tripleShotTimer,
+        },
         renderer: {
           calls: this.renderer.info.render.calls,
           triangles: this.renderer.info.render.triangles,
@@ -557,21 +759,35 @@ class Game {
     this.scene.add(this.aimMarker);
   }
 
+  setupTouchControls() {
+    document.documentElement.classList.toggle('touch-enabled', this.touchEnabled);
+    this.moveStick = new VirtualStick(
+      document.querySelector('#move-stick'),
+      (x, y) => this.touchMovement.set(x, y),
+    );
+    this.aimStick = new VirtualStick(
+      document.querySelector('#aim-stick'),
+      (x, y) => {
+        if (Math.hypot(x, y) <= 0.01) return;
+        this.touchAimDirection.set(x, y).normalize();
+        this.usingTouchAim = true;
+      },
+      true,
+    );
+  }
+
   bindEvents() {
     window.addEventListener('resize', () => this.resize());
     window.addEventListener('keydown', (event) => this.keys.add(event.code));
     window.addEventListener('keyup', (event) => this.keys.delete(event.code));
     window.addEventListener('blur', () => {
       this.keys.clear();
+      this.moveStick.reset();
     });
-    this.canvas.addEventListener('pointermove', (event) => this.updateAimFromPointer(event));
-    this.canvas.addEventListener('pointerdown', (event) => {
-      if (event.button !== 0 || !this.running) return;
+    this.canvas.addEventListener('pointermove', (event) => {
+      if (event.pointerType === 'touch') return;
+      this.usingTouchAim = false;
       this.updateAimFromPointer(event);
-      if (this.attackTimer <= 0) {
-        this.fire();
-        this.attackTimer = FIRE_INTERVAL;
-      }
     });
     this.canvas.addEventListener('contextmenu', (event) => event.preventDefault());
     this.startButton.addEventListener('click', () => this.start());
@@ -599,12 +815,30 @@ class Game {
 
   start() {
     this.clearActors();
+    this.keys.clear();
+    this.moveStick.reset();
+    this.aimStick.reset();
+    this.touchMovement.set(0, 0);
+    this.touchAimDirection.set(0, -1);
+    this.usingTouchAim = false;
     this.elapsed = 0;
+    this.currentHorde = 1;
+    this.hordeAnnouncementTimer = 2.4;
     this.spawnTimer = 0.45;
+    this.powerUpSpawnTimer = 7 + Math.random() * 4;
     this.attackTimer = 0;
+    this.rapidFireTimer = 0;
+    this.tripleShotTimer = 0;
+    this.pickupNoticeTimer = 0;
+    this.powerUpBag = shuffle(Object.keys(POWER_UP_TYPES));
     this.crystalHealth = 100;
     this.score = 0;
     this.scoreValue.textContent = '0';
+    this.hordeValue.textContent = '1';
+    this.hordeBannerValue.textContent = '1';
+    this.hordeBanner.classList.add('visible');
+    this.pickupNotice.classList.remove('visible');
+    this.effectStatus.classList.remove('visible');
     this.player.position.set(0, 0, 4.2);
     this.player.setMoving(false);
     this.aimPoint.set(0, 0, 0);
@@ -622,9 +856,14 @@ class Game {
     }
     for (const projectile of this.projectiles) this.scene.remove(projectile.mesh);
     for (const particle of this.particles) this.scene.remove(particle.mesh);
+    for (const powerUp of this.powerUps) {
+      this.scene.remove(powerUp.visual);
+      disposeObject(powerUp.visual);
+    }
     this.enemies.length = 0;
     this.projectiles.length = 0;
     this.particles.length = 0;
+    this.powerUps.length = 0;
   }
 
   spawnEnemy() {
@@ -646,15 +885,16 @@ class Game {
 
   updatePlayer(delta) {
     const movement = new THREE.Vector3(
-      Number(this.keys.has('KeyD') || this.keys.has('ArrowRight')) - Number(this.keys.has('KeyA') || this.keys.has('ArrowLeft')),
+      Number(this.keys.has('KeyD') || this.keys.has('ArrowRight')) - Number(this.keys.has('KeyA') || this.keys.has('ArrowLeft')) + this.touchMovement.x,
       0,
-      Number(this.keys.has('KeyS') || this.keys.has('ArrowDown')) - Number(this.keys.has('KeyW') || this.keys.has('ArrowUp')),
+      Number(this.keys.has('KeyS') || this.keys.has('ArrowDown')) - Number(this.keys.has('KeyW') || this.keys.has('ArrowUp')) + this.touchMovement.y,
     );
 
     const moving = movement.lengthSq() > 0;
     if (moving) {
+      const movementAmount = Math.min(1, movement.length());
       movement.normalize();
-      this.player.position.addScaledVector(movement, PLAYER_SPEED * delta);
+      this.player.position.addScaledVector(movement, PLAYER_SPEED * delta * movementAmount);
     }
     this.player.position.y = 0;
     this.player.update(delta, moving, this.elapsed);
@@ -665,11 +905,25 @@ class Game {
       this.player.position.z *= PLAYER_BOUNDARY / distance;
     }
 
+    if (this.usingTouchAim) {
+      this.aimPoint.set(
+        this.player.position.x + this.touchAimDirection.x * TOUCH_AIM_DISTANCE,
+        0,
+        this.player.position.z + this.touchAimDirection.y * TOUCH_AIM_DISTANCE,
+      );
+      this.aimMarker.position.set(this.aimPoint.x, 0.035, this.aimPoint.z);
+      this.aimMarker.visible = this.running;
+    }
+
     const aimDirection = this.aimPoint.clone().sub(this.player.position);
     aimDirection.y = 0;
     if (aimDirection.lengthSq() > 0.01) this.player.rotation.y = Math.atan2(aimDirection.x, aimDirection.z);
 
     this.attackTimer -= delta;
+    if (this.attackTimer <= 0) {
+      this.fire();
+      this.attackTimer = this.rapidFireTimer > 0 ? RAPID_FIRE_INTERVAL : FIRE_INTERVAL;
+    }
   }
 
   fire() {
@@ -678,18 +932,22 @@ class Game {
     if (direction.lengthSq() < 0.01) return;
     direction.normalize();
 
-    const mesh = new THREE.Mesh(
-      new THREE.SphereGeometry(0.11, 8, 6),
-      new THREE.MeshBasicMaterial({ color: 0xb9f3ff }),
-    );
-    mesh.position.copy(this.player.position).addScaledVector(direction, 0.7);
-    mesh.position.y = 1.05;
-    this.scene.add(mesh);
-    this.projectiles.push({
-      mesh,
-      velocity: direction.multiplyScalar(PROJECTILE_SPEED),
-      life: PROJECTILE_LIFETIME,
-    });
+    const shotAngles = this.tripleShotTimer > 0 ? [-0.16, 0, 0.16] : [0];
+    for (const angle of shotAngles) {
+      const shotDirection = direction.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), angle);
+      const mesh = new THREE.Mesh(
+        new THREE.SphereGeometry(0.11, 8, 6),
+        new THREE.MeshBasicMaterial({ color: 0xb9f3ff }),
+      );
+      mesh.position.copy(this.player.position).addScaledVector(shotDirection, 0.7);
+      mesh.position.y = 1.05;
+      this.scene.add(mesh);
+      this.projectiles.push({
+        mesh,
+        velocity: shotDirection.multiplyScalar(PROJECTILE_SPEED),
+        life: PROJECTILE_LIFETIME,
+      });
+    }
 
     this.player.rotation.y = Math.atan2(direction.x, direction.z);
   }
@@ -779,7 +1037,7 @@ class Game {
     this.crystalMesh.material.emissive.setHex(0xffffff);
     window.setTimeout(() => this.crystalMesh.material.emissive.setHex(0xff246f), 75);
     this.updateHud();
-    if (this.crystalHealth <= 0) this.end(false);
+    if (this.crystalHealth <= 0) this.end();
   }
 
   burst(position, color, count) {
@@ -812,24 +1070,130 @@ class Game {
     }
   }
 
+  updateHorde(delta) {
+    const nextHorde = Math.floor(this.elapsed / HORDE_DURATION) + 1;
+    if (nextHorde !== this.currentHorde) {
+      this.currentHorde = nextHorde;
+      this.hordeValue.textContent = String(nextHorde);
+      this.hordeBannerValue.textContent = String(nextHorde);
+      this.hordeAnnouncementTimer = 2.4;
+      this.hordeBanner.classList.add('visible');
+    }
+
+    this.hordeAnnouncementTimer = Math.max(0, this.hordeAnnouncementTimer - delta);
+    if (this.hordeAnnouncementTimer <= 0) this.hordeBanner.classList.remove('visible');
+  }
+
+  getSpawnInterval() {
+    const hordeFrequencyMultiplier = HORDE_SPAWN_FREQUENCY_GROWTH ** (this.currentHorde - 1);
+    return Math.max(MIN_ENEMY_SPAWN_INTERVAL, BASE_ENEMY_SPAWN_INTERVAL / hordeFrequencyMultiplier);
+  }
+
+  getNextPowerUpType() {
+    if (this.powerUpBag.length === 0) this.powerUpBag = shuffle(Object.keys(POWER_UP_TYPES));
+    return this.powerUpBag.pop();
+  }
+
+  spawnPowerUp() {
+    if (this.powerUps.length >= MAX_POWER_UPS) return;
+
+    const type = this.getNextPowerUpType();
+    const visual = createPowerUpVisual(type);
+    let position = new THREE.Vector3();
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      const angle = Math.random() * Math.PI * 2;
+      const radius = 7 + Math.random() * (PLAYER_BOUNDARY - 9);
+      position = new THREE.Vector3(Math.cos(angle) * radius, 0, Math.sin(angle) * radius);
+      if (position.distanceTo(this.player.position) > 4) break;
+    }
+    visual.position.copy(position);
+    this.scene.add(visual);
+    this.powerUps.push({ type, visual, life: POWER_UP_LIFETIME, age: 0 });
+  }
+
+  collectPowerUp(powerUp) {
+    const config = POWER_UP_TYPES[powerUp.type];
+    if (powerUp.type === 'repair') this.crystalHealth = Math.min(100, this.crystalHealth + 25);
+    if (powerUp.type === 'rapid') this.rapidFireTimer = POWER_UP_DURATION;
+    if (powerUp.type === 'triple') this.tripleShotTimer = POWER_UP_DURATION;
+
+    this.pickupNotice.textContent = config.label;
+    this.pickupNotice.style.setProperty('--pickup-color', `#${config.color.toString(16).padStart(6, '0')}`);
+    this.pickupNotice.classList.add('visible');
+    this.pickupNoticeTimer = 1.8;
+    this.burst(powerUp.visual.position, config.color, 10);
+    this.updateHud();
+  }
+
+  removePowerUp(index, collected = false) {
+    const powerUp = this.powerUps[index];
+    if (collected) this.collectPowerUp(powerUp);
+    this.scene.remove(powerUp.visual);
+    disposeObject(powerUp.visual);
+    this.powerUps.splice(index, 1);
+  }
+
+  updatePowerUps(delta, ambientTime) {
+    this.powerUpSpawnTimer -= delta;
+    if (this.powerUpSpawnTimer <= 0) {
+      this.spawnPowerUp();
+      this.powerUpSpawnTimer = 9 + Math.random() * 5;
+    }
+
+    for (let i = this.powerUps.length - 1; i >= 0; i -= 1) {
+      const powerUp = this.powerUps[i];
+      powerUp.life -= delta;
+      powerUp.age += delta;
+      powerUp.visual.rotation.y += delta * 1.4;
+      powerUp.visual.userData.core.position.y = 0.88 + Math.sin(ambientTime * 4 + i) * 0.12;
+      powerUp.visual.userData.ring.rotation.z += delta * 0.9;
+
+      const dx = powerUp.visual.position.x - this.player.position.x;
+      const dz = powerUp.visual.position.z - this.player.position.z;
+      if (Math.hypot(dx, dz) < 1.2) {
+        this.removePowerUp(i, true);
+      } else if (powerUp.life <= 0) {
+        this.removePowerUp(i);
+      }
+    }
+  }
+
+  updateEffects(delta) {
+    this.rapidFireTimer = Math.max(0, this.rapidFireTimer - delta);
+    this.tripleShotTimer = Math.max(0, this.tripleShotTimer - delta);
+    this.pickupNoticeTimer = Math.max(0, this.pickupNoticeTimer - delta);
+    if (this.pickupNoticeTimer <= 0) this.pickupNotice.classList.remove('visible');
+
+    const effects = [];
+    if (this.rapidFireTimer > 0) effects.push(`RAPID FIRE ${this.rapidFireTimer.toFixed(1)}s`);
+    if (this.tripleShotTimer > 0) effects.push(`TRIPLE SHOT ${this.tripleShotTimer.toFixed(1)}s`);
+    this.effectStatus.textContent = effects.join('  •  ');
+    this.effectStatus.classList.toggle('visible', effects.length > 0);
+  }
+
   updateHud() {
     this.healthBar.style.width = `${this.crystalHealth}%`;
     this.healthValue.textContent = String(Math.ceil(this.crystalHealth));
-    const remaining = Math.max(0, Math.ceil(GAME_DURATION - this.elapsed));
-    this.timerValue.textContent = `0:${String(remaining).padStart(2, '0')}`;
+    this.timerValue.textContent = formatTime(this.elapsed);
+    this.hordeValue.textContent = String(this.currentHorde);
   }
 
-  end(won) {
+  end() {
     this.running = false;
+    this.keys.clear();
+    this.moveStick.reset();
+    this.aimStick.reset();
+    this.touchMovement.set(0, 0);
     this.aimMarker.visible = false;
+    this.hordeBanner.classList.remove('visible');
+    this.pickupNotice.classList.remove('visible');
+    this.effectStatus.classList.remove('visible');
     const kicker = this.overlay.querySelector('.kicker');
     const title = this.overlay.querySelector('h1');
     const copy = this.overlay.querySelector('p');
-    kicker.textContent = won ? 'DAWN HAS ARRIVED' : 'THE CRYSTAL HAS FALLEN';
-    title.innerHTML = won ? 'Night<br /><em>Survived</em>' : 'Try<br /><em>Again</em>';
-    copy.textContent = won
-      ? `You held the line and cleared ${this.score} creatures.`
-      : `You cleared ${this.score} creatures before the crystal broke.`;
+    kicker.textContent = 'THE CRYSTAL HAS FALLEN';
+    title.innerHTML = 'Try<br /><em>Again</em>';
+    copy.textContent = `Survived ${formatTime(this.elapsed)} • Reached Horde ${this.currentHorde} • Defeated ${this.score} creatures.`;
     this.startButton.textContent = 'PLAY AGAIN';
     this.overlay.classList.remove('hidden');
   }
@@ -847,19 +1211,20 @@ class Game {
 
     if (this.running) {
       this.elapsed += delta;
+      this.updateHorde(delta);
       this.spawnTimer -= delta;
       if (this.spawnTimer <= 0) {
         this.spawnEnemy();
-        this.spawnTimer = Math.max(0.58, 1.35 - this.elapsed * 0.009);
+        this.spawnTimer = this.getSpawnInterval();
       }
 
       this.updatePlayer(delta);
       this.updateEnemies(delta);
       this.updateProjectiles(delta);
+      this.updatePowerUps(delta, ambientTime);
+      this.updateEffects(delta);
       this.updateParticles(delta);
       this.updateHud();
-
-      if (this.elapsed >= GAME_DURATION) this.end(true);
     } else {
       this.updateParticles(delta);
     }
