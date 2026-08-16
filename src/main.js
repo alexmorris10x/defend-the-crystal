@@ -183,8 +183,8 @@ class Game {
     this.crosshair = document.querySelector('.crosshair');
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x080b16);
-    this.scene.fog = new THREE.FogExp2(0x080b16, 0.017);
+    this.scene.background = new THREE.Color(0x718397);
+    this.scene.fog = new THREE.FogExp2(0x718397, 0.008);
 
     this.camera = new THREE.PerspectiveCamera(42, 1, 0.1, 120);
     this.camera.position.set(0, 29, 31);
@@ -272,10 +272,10 @@ class Game {
   }
 
   buildWorld() {
-    const hemi = new THREE.HemisphereLight(0xadb7ff, 0x15101f, 1.35);
+    const hemi = new THREE.HemisphereLight(0xe3edff, 0x4c5565, 1.85);
     this.scene.add(hemi);
 
-    const moon = new THREE.DirectionalLight(0x879cff, 2.3);
+    const moon = new THREE.DirectionalLight(0xffe4cf, 3.1);
     moon.position.set(-8, 14, 7);
     moon.castShadow = true;
     moon.shadow.mapSize.set(1024, 1024);
@@ -287,7 +287,7 @@ class Game {
 
     const floor = new THREE.Mesh(
       new THREE.CircleGeometry(ARENA_RADIUS + 2, 64),
-      new THREE.MeshStandardMaterial({ color: 0x171a2b, roughness: 0.93, metalness: 0.04 }),
+      new THREE.MeshStandardMaterial({ color: 0x4d5b6d, roughness: 0.93, metalness: 0.04 }),
     );
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
@@ -298,7 +298,7 @@ class Game {
       const ring = new THREE.Mesh(
         new THREE.RingGeometry(radius - 0.025, radius + 0.025, 96),
         new THREE.MeshBasicMaterial({
-          color: radius === ARENA_RADIUS + 1.2 ? 0x493d70 : 0x292946,
+          color: radius === ARENA_RADIUS + 1.2 ? 0xb0bac8 : 0x748198,
           transparent: true,
           opacity: 0.85,
         }),
@@ -316,7 +316,7 @@ class Game {
   }
 
   addArenaProps() {
-    const stoneMaterial = new THREE.MeshStandardMaterial({ color: 0x282b43, roughness: 0.92 });
+    const stoneMaterial = new THREE.MeshStandardMaterial({ color: 0x647184, roughness: 0.92 });
     for (let i = 0; i < 28; i += 1) {
       const angle = (i / 28) * Math.PI * 2 + (i % 2) * 0.08;
       const radius = ARENA_RADIUS + 1.4 + (i % 3) * 0.65;
