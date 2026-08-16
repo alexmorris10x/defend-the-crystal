@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import './style.css';
 
 const GAME_DURATION = 60;
@@ -8,15 +9,22 @@ const PLAYER_SPEED = 7.5;
 const FIRE_INTERVAL = 0.32;
 const PROJECTILE_SPEED = 24;
 const PROJECTILE_LIFETIME = 2.3;
+const ENEMY_ASSET_URL = '/assets/enemies/crystal-brute.glb';
 
 class EnemyVisual extends THREE.Group {
   static HEIGHT = 1.8;
   static RADIUS = 0.55;
 
-  constructor() {
+  constructor(modelTemplate = null) {
     super();
     this.state = 'walk';
     this.stateTime = 0;
+    this.usesGeneratedModel = false;
+    this.instanceMaterials = [];
+    this.content = new THREE.Group();
+    this.placeholder = new THREE.Group();
+    this.content.add(this.placeholder);
+    this.add(this.content);
 
     const skin = new THREE.MeshStandardMaterial({
       color: 0x9d6bff,
@@ -30,27 +38,27 @@ class EnemyVisual extends THREE.Group {
     this.body = new THREE.Mesh(new THREE.CapsuleGeometry(0.43, 0.64, 5, 9), skin);
     this.body.position.y = 1.02;
     this.body.castShadow = true;
-    this.add(this.body);
+    this.placeholder.add(this.body);
 
     this.head = new THREE.Mesh(new THREE.SphereGeometry(0.42, 12, 9), skin);
     this.head.scale.set(1.12, 0.9, 0.95);
     this.head.position.set(0, 1.65, 0.02);
     this.head.castShadow = true;
-    this.add(this.head);
+    this.placeholder.add(this.head);
 
     const hornGeometry = new THREE.ConeGeometry(0.11, 0.42, 6);
     for (const side of [-1, 1]) {
       const horn = new THREE.Mesh(hornGeometry, dark);
       horn.position.set(side * 0.28, 1.98, 0);
       horn.rotation.z = side * -0.34;
-      this.add(horn);
+      this.placeholder.add(horn);
     }
 
     const eyeMaterial = new THREE.MeshBasicMaterial({ color: 0xffd66b });
     for (const side of [-1, 1]) {
       const eye = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 6), eyeMaterial);
       eye.position.set(side * 0.14, 1.7, 0.39);
-      this.add(eye);
+      this.placeholder.add(eye);
     }
 
     this.shadow = new THREE.Mesh(
@@ -60,39 +68,106 @@ class EnemyVisual extends THREE.Group {
     this.shadow.rotation.x = -Math.PI / 2;
     this.shadow.position.y = 0.015;
     this.add(this.shadow);
+
+    if (modelTemplate) this.applyModel(modelTemplate);
+  }
+
+  applyModel(modelTemplate) {
+    if (this.usesGeneratedModel) return;
+
+    const model = modelTemplate.clone(true);
+    model.traverse((child) => {
+      if (!child.isMesh) return;
+      child.castShadow = true;
+      child.receiveShadow = true;
+      const sourceMaterials = Array.isArray(child.material) ? child.material : [child.material];
+      const materials = sourceMaterials.map((material) => {
+        const instanceMaterial = material.clone();
+        if (instanceMaterial.emissive) {
+          instanceMaterial.emissive.setHex(0x2a0d3f);
+          instanceMaterial.emissiveIntensity = 0.85;
+          instanceMaterial.userData.enemyBaseEmissive = instanceMaterial.emissive.clone();
+          instanceMaterial.userData.enemyBaseEmissiveIntensity = instanceMaterial.emissiveIntensity;
+        }
+        this.instanceMaterials.push(instanceMaterial);
+        return instanceMaterial;
+      });
+      child.material = Array.isArray(child.material) ? materials : materials[0];
+    });
+
+    const bounds = new THREE.Box3().setFromObject(model);
+    const size = bounds.getSize(new THREE.Vector3());
+    const scale = EnemyVisual.HEIGHT / size.y;
+    model.scale.setScalar(scale);
+    bounds.setFromObject(model);
+    const center = bounds.getCenter(new THREE.Vector3());
+    model.position.set(-center.x, -bounds.min.y, -center.z);
+
+    this.model = model;
+    this.content.add(model);
+    this.placeholder.visible = false;
+    this.usesGeneratedModel = true;
+  }
+
+  setHitHighlight(active) {
+    for (const material of this.instanceMaterials) {
+      if (!material.emissive) continue;
+      if (active) {
+        material.emissive.setHex(0xff174f);
+        material.emissiveIntensity = 1.35;
+      } else {
+        material.emissive.copy(material.userData.enemyBaseEmissive);
+        material.emissiveIntensity = material.userData.enemyBaseEmissiveIntensity;
+      }
+    }
   }
 
   setState(state) {
     if (state === this.state) return;
+    if (this.state === 'hit') this.setHitHighlight(false);
     this.state = state;
     this.stateTime = 0;
+    this.content.position.set(0, 0, 0);
+    this.content.rotation.set(0, 0, 0);
+    this.body.rotation.x = 0;
   }
 
   update(delta, elapsed) {
     this.stateTime += delta;
 
     if (this.state === 'walk') {
-      this.body.position.y = 1.02 + Math.sin(elapsed * 10) * 0.06;
+      this.content.position.y = Math.sin(elapsed * 10) * 0.045;
       this.head.rotation.z = Math.sin(elapsed * 7) * 0.045;
-      this.rotation.z = Math.sin(elapsed * 10) * 0.025;
+      this.content.rotation.z = Math.sin(elapsed * 10) * 0.025;
     } else if (this.state === 'attack') {
       const strike = Math.sin(Math.min(1, this.stateTime / 0.48) * Math.PI);
-      this.body.rotation.x = strike * 0.32;
-      this.position.y = strike * 0.08;
+      this.content.rotation.x = strike * 0.32;
+      this.content.position.y = strike * 0.08;
     } else if (this.state === 'hit') {
       this.body.material.emissive.setHex(0xff355f);
       this.body.material.emissiveIntensity = 1.5;
-      this.position.x = Math.sin(this.stateTime * 55) * 0.05;
+      this.setHitHighlight(true);
+      this.content.position.x = Math.sin(this.stateTime * 55) * 0.05;
       if (this.stateTime > 0.12) {
         this.body.material.emissive.setHex(0x1c0e3d);
         this.body.material.emissiveIntensity = 0.55;
-        this.position.x = 0;
+        this.setHitHighlight(false);
+        this.content.position.x = 0;
         this.setState('walk');
       }
     } else if (this.state === 'death') {
       this.rotation.z = Math.min(Math.PI / 2, this.stateTime * 5);
       this.scale.multiplyScalar(Math.max(0.94, 1 - delta * 2.3));
     }
+  }
+
+  dispose() {
+    this.placeholder.traverse((child) => {
+      child.geometry?.dispose();
+      if (Array.isArray(child.material)) child.material.forEach((material) => material.dispose());
+      else child.material?.dispose();
+    });
+    this.instanceMaterials.forEach((material) => material.dispose());
   }
 }
 
@@ -138,11 +213,62 @@ class Game {
     this.crystalHealth = 100;
     this.score = 0;
     this.running = false;
+    this.enemyModelTemplate = null;
+    this.enemyAssetStatus = 'loading';
+    this.enemyAssetError = null;
 
     this.buildWorld();
+    this.installDiagnostics();
+    this.loadEnemyAsset();
     this.bindEvents();
     this.resize();
     this.renderer.setAnimationLoop(() => this.frame());
+  }
+
+  installDiagnostics() {
+    window.__THREE_GAME_DIAGNOSTICS__ = {
+      snapshot: () => ({
+        gameState: this.running ? 'playing' : 'ready',
+        enemyAsset: {
+          url: ENEMY_ASSET_URL,
+          status: this.enemyAssetStatus,
+          error: this.enemyAssetError,
+          generatedInstances: this.enemies.filter((enemy) => enemy.visual.usesGeneratedModel).length,
+          fallbackInstances: this.enemies.filter((enemy) => !enemy.visual.usesGeneratedModel).length,
+        },
+        activeEnemies: this.enemies.length,
+        renderer: {
+          calls: this.renderer.info.render.calls,
+          triangles: this.renderer.info.render.triangles,
+          geometries: this.renderer.info.memory.geometries,
+          textures: this.renderer.info.memory.textures,
+        },
+      }),
+    };
+  }
+
+  loadEnemyAsset() {
+    const loader = new GLTFLoader();
+    loader.load(
+      ENEMY_ASSET_URL,
+      (gltf) => {
+        if (!gltf.scene) {
+          this.enemyAssetStatus = 'fallback';
+          this.enemyAssetError = 'The GLB contained no scene.';
+          return;
+        }
+        this.enemyModelTemplate = gltf.scene;
+        this.enemyAssetStatus = 'loaded';
+        this.enemyAssetError = null;
+        for (const enemy of this.enemies) enemy.visual.applyModel(this.enemyModelTemplate);
+      },
+      undefined,
+      (error) => {
+        this.enemyAssetStatus = 'fallback';
+        this.enemyAssetError = error?.message || 'The enemy GLB could not be loaded.';
+        console.warn(`Enemy asset unavailable; using the procedural fallback. ${this.enemyAssetError}`);
+      },
+    );
   }
 
   buildWorld() {
@@ -330,6 +456,7 @@ class Game {
     this.attackTimer = 0;
     this.crystalHealth = 100;
     this.score = 0;
+    this.scoreValue.textContent = '0';
     this.player.position.set(0, 0, 4.2);
     this.aimPoint.set(0, 0, 0);
     this.aimMarker.position.set(0, 0.035, 0);
@@ -340,7 +467,10 @@ class Game {
   }
 
   clearActors() {
-    for (const enemy of this.enemies) this.scene.remove(enemy.visual);
+    for (const enemy of this.enemies) {
+      this.scene.remove(enemy.visual);
+      enemy.visual.dispose();
+    }
     for (const projectile of this.projectiles) this.scene.remove(projectile.mesh);
     for (const particle of this.particles) this.scene.remove(particle.mesh);
     this.enemies.length = 0;
@@ -350,7 +480,7 @@ class Game {
 
   spawnEnemy() {
     const angle = Math.random() * Math.PI * 2;
-    const visual = new EnemyVisual();
+    const visual = new EnemyVisual(this.enemyModelTemplate);
     visual.position.set(Math.cos(angle) * ARENA_RADIUS, 0, Math.sin(angle) * ARENA_RADIUS);
     visual.rotation.y = Math.atan2(-visual.position.x, -visual.position.z);
     this.scene.add(visual);
@@ -472,6 +602,7 @@ class Game {
         if (enemy.deathTime > 0.52) {
           this.burst(enemy.visual.position, 0x9d6bff, 7);
           this.scene.remove(enemy.visual);
+          enemy.visual.dispose();
           this.enemies.splice(i, 1);
         }
         continue;

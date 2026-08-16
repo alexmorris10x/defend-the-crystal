@@ -1,0 +1,132 @@
+{
+  "schema_version": 1,
+  "project": {
+    "name": "Defend the Crystal",
+    "engine": "Three.js",
+    "engine_version": "0.185.1",
+    "target_platforms": ["desktop web browser"],
+    "camera_context": "High oblique arena camera; enemies move from the arena edge toward the center crystal.",
+    "performance_target": "Maintain the existing smooth local browser loop with several simultaneous enemy instances; formal frame and memory targets remain pending."
+  },
+  "asset": {
+    "id": "crystal-brute",
+    "name": "Crystal Brute",
+    "category": "character",
+    "purpose": "Replace the procedural enemy visual in the V3 tutorial checkpoint without changing gameplay rules.",
+    "status": "engine-integration",
+    "owner": "Alex Morris",
+    "concept_references": [
+      "docs/assets/evidence/crystal-brute-turnaround.png",
+      "docs/assets/evidence/crystal-brute-front.png",
+      "docs/assets/evidence/crystal-brute-back.png",
+      "docs/assets/evidence/crystal-brute-right.png"
+    ],
+    "source": {
+      "method": "hybrid",
+      "provider": "Meshy",
+      "model_or_pack": "Meshy 7 High Detail image-to-3D with PBR texture and fixed-count remesh",
+      "version": "Meshy 7",
+      "source_url": "https://www.meshy.ai/workspace",
+      "prompt_or_brief_path": "docs/assets/crystal-brute-production-notes.md",
+      "seed_or_task_id": "source 01a009c6-b235-711d-8c7e-4f921aff4bdf; texture 01a009cc-8d29-71f7-ab28-e763c70cd71b; remesh 01a009d1-3f50-72ea-85c6-133881e1b5f5",
+      "acquired_at": "2026-08-16",
+      "purchase_record_path": ""
+    },
+    "rights": {
+      "license_name": "Creative Commons Attribution 4.0 International (CC BY 4.0)",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/",
+      "license_evidence_path": "docs/assets/crystal-brute-production-notes.md",
+      "commercial_use": "yes",
+      "modification_allowed": "yes",
+      "ai_input_allowed": "yes",
+      "attribution_required": "yes",
+      "territory_restrictions": "none recorded",
+      "notes": "Generated on the Meshy Free plan before the later Pro upgrade. Required credit: Model created with Meshy – CC BY 4.0 License."
+    },
+    "technical": {
+      "source_format": "Meshy hosted generation",
+      "deliverable_format": "GLB 2.0",
+      "triangle_count": 10188,
+      "material_count": 1,
+      "texture_sets": [
+        "2048x2048 normal PNG",
+        "2048x2048 base-color PNG",
+        "4096x4096 metallic-roughness PNG"
+      ],
+      "rig_type": "none",
+      "animation_clips": [],
+      "lod_count": 1,
+      "collider": "Existing gameplay sphere radius 0.55; not derived from the render mesh.",
+      "scale_units": "Runtime-normalized to 1.8 Three.js world units tall",
+      "forward_axis": "Normalized by the EnemyVisual adapter; runtime visual check required",
+      "up_axis": "+Y"
+    },
+    "gates": {
+      "concept": {
+        "status": "pass",
+        "evidence": ["Approved turnaround and isolated front, back, and right views"],
+        "notes": "Alex approved Candidate C for the enemy tutorial asset."
+      },
+      "rights": {
+        "status": "pass",
+        "evidence": ["Meshy workspace CC BY 4.0 label", "Meshy commercial-use help page", "Original project-generated input art"],
+        "notes": "Commercial use and modification are allowed with Meshy attribution."
+      },
+      "source_quality": {
+        "status": "pass",
+        "evidence": ["10,188 triangles", "7,306 vertices", "one mesh", "one material", "PBR texture set", "Meshy viewer front inspection"],
+        "notes": "Static silhouette and texture were accepted for V3. Deformation topology is untested because the asset is not rigged."
+      },
+      "dcc_cleanup": {
+        "status": "pending",
+        "evidence": ["Meshy fixed-count remesh only"],
+        "notes": "No Blender source or manual UV/topology cleanup exists. The 4096 metallic-roughness texture should be reduced for production."
+      },
+      "rig_and_motion": {
+        "status": "not_applicable",
+        "evidence": ["V3 uses code-driven root-level walk, attack, hit, and death feedback"],
+        "notes": "A skeleton and authored clips are outside the signed V3 boundary."
+      },
+      "engine_import": {
+        "status": "pass",
+        "evidence": ["Vite production build passed", "GLTFLoader loaded the GLB over HTTP", "No required-request, page, console-error, or WebGL failure was observed"],
+        "notes": "EnemyVisual measures the mesh, grounds it, clones per-instance materials, and keeps gameplay state outside the render asset."
+      },
+      "game_camera": {
+        "status": "pass",
+        "evidence": ["Generated enemies were visible in the real arena camera", "Real mouse aiming and firing produced five or more kills", "Hit, death, crystal attack, failure, and restart paths were observed"],
+        "notes": "A low purple emissive fill was added in the visual adapter because the original charcoal texture was too dark against the night arena."
+      },
+      "runtime_performance": {
+        "status": "pending",
+        "evidence": [],
+        "notes": "No formal frame-time or memory budget has been measured."
+      },
+      "target_runtime": {
+        "status": "pass",
+        "evidence": ["Desktop browser playtest at http://127.0.0.1:5174/"],
+        "notes": "The declared desktop-web target passed. Mobile and lower-end hardware remain outside the V3 target."
+      }
+    },
+    "outputs": {
+      "original_source_path": "public/assets/enemies/crystal-brute.glb",
+      "dcc_source_path": "",
+      "clean_export_path": "public/assets/enemies/crystal-brute.glb",
+      "engine_asset_path": "public/assets/enemies/crystal-brute.glb",
+      "prefab_or_equivalent_path": "src/main.js#EnemyVisual",
+      "screenshots_or_turntables": [
+        "docs/assets/evidence/crystal-brute-turnaround.png",
+        "docs/assets/evidence/crystal-brute-front.png",
+        "docs/assets/evidence/crystal-brute-back.png",
+        "docs/assets/evidence/crystal-brute-right.png"
+      ],
+      "test_reports": ["2026-08-16 V3 build, normal-asset playtest, missing-asset fallback, failure, and restart proof recorded in the 10x-os scope"]
+    }
+  },
+  "decision": {
+    "status": "rework",
+    "decided_at": "2026-08-16",
+    "decider": "Codex asset pipeline",
+    "notes": "Suitable for the V3 tutorial checkpoint after browser proof. Not production-ready because DCC cleanup, texture reduction, formal performance, and target-runtime gates remain open."
+  }
+}
