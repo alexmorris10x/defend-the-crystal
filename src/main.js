@@ -12,6 +12,7 @@ const PROJECTILE_SPEED = 24;
 const PROJECTILE_LIFETIME = 2.3;
 const ENEMY_ANIMATED_ASSET_URL = '/assets/enemies/crystal-brute-animated.glb';
 const ENEMY_STATIC_ASSET_URL = '/assets/enemies/crystal-brute.glb';
+const PLAYER_ANIMATED_ASSET_URL = '/assets/player/prism-ranger-animated.glb';
 
 class EnemyVisual extends THREE.Group {
   static HEIGHT = 1.8;
@@ -189,6 +190,97 @@ class EnemyVisual extends THREE.Group {
   }
 }
 
+class PlayerVisual extends THREE.Group {
+  static HEIGHT = 1.8;
+
+  constructor() {
+    super();
+    this.usesGeneratedModel = false;
+    this.usesSkeletalAnimation = false;
+    this.content = new THREE.Group();
+    this.placeholder = new THREE.Group();
+    this.content.add(this.placeholder);
+    this.add(this.content);
+
+    const armor = new THREE.MeshStandardMaterial({
+      color: 0x56d8ff,
+      emissive: 0x0a6b94,
+      emissiveIntensity: 0.7,
+      roughness: 0.42,
+      metalness: 0.48,
+    });
+    const core = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x7fdfff, emissiveIntensity: 2 });
+
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.56, 0.95, 8), armor);
+    body.position.y = 0.66;
+    body.castShadow = true;
+    this.placeholder.add(body);
+
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.34, 12, 8), armor);
+    head.position.y = 1.34;
+    head.castShadow = true;
+    this.placeholder.add(head);
+
+    const visor = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.09, 0.08), core);
+    visor.position.set(0, 1.38, 0.3);
+    this.placeholder.add(visor);
+
+    const pointer = new THREE.Mesh(new THREE.ConeGeometry(0.13, 0.45, 6), armor);
+    pointer.rotation.x = Math.PI / 2;
+    pointer.position.set(0, 0.72, 0.61);
+    this.placeholder.add(pointer);
+  }
+
+  applyModel(modelTemplate, animations = []) {
+    if (this.usesGeneratedModel) return;
+
+    const model = cloneSkeleton(modelTemplate);
+    model.traverse((child) => {
+      if (!child.isMesh) return;
+      child.castShadow = true;
+      child.receiveShadow = true;
+      const sourceMaterials = Array.isArray(child.material) ? child.material : [child.material];
+      const materials = sourceMaterials.map((material) => material.clone());
+      child.material = Array.isArray(child.material) ? materials : materials[0];
+    });
+
+    model.updateMatrixWorld(true);
+    const bounds = new THREE.Box3().setFromObject(model);
+    const size = bounds.getSize(new THREE.Vector3());
+    const scale = PlayerVisual.HEIGHT / size.y;
+    model.scale.multiplyScalar(scale);
+    bounds.setFromObject(model);
+    const center = bounds.getCenter(new THREE.Vector3());
+    model.position.set(-center.x, -bounds.min.y, -center.z);
+
+    this.model = model;
+    this.content.add(model);
+    this.placeholder.visible = false;
+    this.usesGeneratedModel = true;
+
+    const walkClip = THREE.AnimationClip.findByName(animations, 'Walking');
+    if (walkClip) {
+      this.mixer = new THREE.AnimationMixer(model);
+      this.walkAction = this.mixer.clipAction(walkClip);
+      this.walkAction.play();
+      this.walkAction.paused = true;
+      this.usesSkeletalAnimation = true;
+    }
+  }
+
+  setMoving(moving) {
+    if (this.walkAction) this.walkAction.paused = !moving;
+  }
+
+  update(delta, moving, elapsed) {
+    this.setMoving(moving);
+    this.mixer?.update(delta);
+    if (!this.usesSkeletalAnimation) {
+      this.content.position.y = moving ? Math.abs(Math.sin(elapsed * 11)) * 0.05 : 0;
+    }
+  }
+}
+
 class Game {
   constructor() {
     this.canvas = document.querySelector('#game');
@@ -236,10 +328,15 @@ class Game {
     this.enemyAssetStatus = 'loading';
     this.enemyAssetError = null;
     this.enemyAssetUrl = ENEMY_ANIMATED_ASSET_URL;
+    this.playerModelTemplate = null;
+    this.playerAnimations = [];
+    this.playerAssetStatus = 'loading';
+    this.playerAssetError = null;
 
     this.buildWorld();
     this.installDiagnostics();
     this.loadEnemyAsset();
+    this.loadPlayerAsset();
     this.bindEvents();
     this.resize();
     this.renderer.setAnimationLoop(() => this.frame());
@@ -257,6 +354,14 @@ class Game {
           animatedInstances: this.enemies.filter((enemy) => enemy.visual.usesSkeletalAnimation).length,
           fallbackInstances: this.enemies.filter((enemy) => !enemy.visual.usesGeneratedModel).length,
           clips: this.enemyAnimations.map((clip) => clip.name),
+        },
+        playerAsset: {
+          url: PLAYER_ANIMATED_ASSET_URL,
+          status: this.playerAssetStatus,
+          error: this.playerAssetError,
+          generated: this.player.usesGeneratedModel,
+          animated: this.player.usesSkeletalAnimation,
+          clips: this.playerAnimations.map((clip) => clip.name),
         },
         activeEnemies: this.enemies.length,
         renderer: {
@@ -312,6 +417,33 @@ class Game {
       },
       undefined,
       (error) => loadStaticFallback(error?.message || 'The animated enemy GLB could not be loaded.'),
+    );
+  }
+
+  loadPlayerAsset() {
+    const loader = new GLTFLoader();
+    loader.load(
+      PLAYER_ANIMATED_ASSET_URL,
+      (gltf) => {
+        const walkClip = THREE.AnimationClip.findByName(gltf.animations, 'Walking');
+        if (!gltf.scene || !walkClip) {
+          this.playerAssetStatus = 'procedural-fallback';
+          this.playerAssetError = 'The player GLB did not contain a scene and Walking clip.';
+          console.warn(`Player asset unavailable; using the procedural fallback. ${this.playerAssetError}`);
+          return;
+        }
+        this.playerModelTemplate = gltf.scene;
+        this.playerAnimations = gltf.animations || [];
+        this.player.applyModel(this.playerModelTemplate, this.playerAnimations);
+        this.playerAssetStatus = 'loaded-animated';
+        this.playerAssetError = null;
+      },
+      undefined,
+      (error) => {
+        this.playerAssetStatus = 'procedural-fallback';
+        this.playerAssetError = error?.message || 'The animated player GLB could not be loaded.';
+        console.warn(`Player asset unavailable; using the procedural fallback. ${this.playerAssetError}`);
+      },
     );
   }
 
@@ -409,35 +541,7 @@ class Game {
   }
 
   buildPlayer() {
-    this.player = new THREE.Group();
-    const armor = new THREE.MeshStandardMaterial({
-      color: 0x56d8ff,
-      emissive: 0x0a6b94,
-      emissiveIntensity: 0.7,
-      roughness: 0.42,
-      metalness: 0.48,
-    });
-    const core = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x7fdfff, emissiveIntensity: 2 });
-
-    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.56, 0.95, 8), armor);
-    body.position.y = 0.66;
-    body.castShadow = true;
-    this.player.add(body);
-
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.34, 12, 8), armor);
-    head.position.y = 1.34;
-    head.castShadow = true;
-    this.player.add(head);
-
-    const visor = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.09, 0.08), core);
-    visor.position.set(0, 1.38, 0.3);
-    this.player.add(visor);
-
-    const pointer = new THREE.Mesh(new THREE.ConeGeometry(0.13, 0.45, 6), armor);
-    pointer.rotation.x = Math.PI / 2;
-    pointer.position.set(0, 0.72, 0.61);
-    this.player.add(pointer);
-
+    this.player = new PlayerVisual();
     this.player.position.set(0, 0, 4.2);
     this.scene.add(this.player);
   }
@@ -502,6 +606,7 @@ class Game {
     this.score = 0;
     this.scoreValue.textContent = '0';
     this.player.position.set(0, 0, 4.2);
+    this.player.setMoving(false);
     this.aimPoint.set(0, 0, 0);
     this.aimMarker.position.set(0, 0.035, 0);
     this.aimMarker.visible = true;
@@ -546,13 +651,13 @@ class Game {
       Number(this.keys.has('KeyS') || this.keys.has('ArrowDown')) - Number(this.keys.has('KeyW') || this.keys.has('ArrowUp')),
     );
 
-    if (movement.lengthSq() > 0) {
+    const moving = movement.lengthSq() > 0;
+    if (moving) {
       movement.normalize();
       this.player.position.addScaledVector(movement, PLAYER_SPEED * delta);
-      this.player.position.y = Math.abs(Math.sin(this.elapsed * 11)) * 0.05;
-    } else {
-      this.player.position.y = 0;
     }
+    this.player.position.y = 0;
+    this.player.update(delta, moving, this.elapsed);
 
     const distance = Math.hypot(this.player.position.x, this.player.position.z);
     if (distance > PLAYER_BOUNDARY) {

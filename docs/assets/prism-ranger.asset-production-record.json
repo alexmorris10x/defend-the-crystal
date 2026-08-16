@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "project": {
+    "name": "Defend the Crystal",
+    "engine": "Three.js",
+    "engine_version": "0.185.1",
+    "target_platforms": ["desktop web browser"],
+    "camera_context": "High oblique arena camera; the player moves around the center crystal and aims independently with the mouse."
+  },
+  "asset": {
+    "id": "prism-ranger",
+    "name": "Prism Ranger",
+    "category": "player character",
+    "purpose": "Replace the procedural cyan player with an original generated hero and a simple walking loop without changing gameplay rules.",
+    "status": "engine-integration",
+    "owner": "Alex Morris",
+    "concept_references": [
+      "docs/assets/evidence/prism-ranger-turnaround.png",
+      "docs/assets/evidence/prism-ranger-front.png",
+      "docs/assets/evidence/prism-ranger-back.png",
+      "docs/assets/evidence/prism-ranger-right.png"
+    ],
+    "source": {
+      "method": "hybrid",
+      "provider": "Meshy",
+      "model_or_pack": "Meshy 7 High Detail multi-image-to-3D, fixed-count remesh, 2K PBR texture, Humanoid rig, and Meshy locomotion clips",
+      "version": "Meshy 7",
+      "source_url": "https://www.meshy.ai/workspace?sidebar=animate",
+      "prompt_or_brief_path": "docs/assets/prism-ranger-production-notes.md",
+      "seed_or_task_id": "Meshy web task IDs were not exposed in the downloaded archive",
+      "acquired_at": "2026-08-16",
+      "download_archive_sha256": "155aab4ce451977b906e632c658cb0719d2fcfc8872270eae50518812f7183f5"
+    },
+    "rights": {
+      "license_name": "Private Meshy output",
+      "license_evidence_path": "docs/assets/prism-ranger-production-notes.md",
+      "commercial_use": "not reverified in this checkpoint",
+      "modification_allowed": "not reverified in this checkpoint",
+      "attribution_required": "not indicated by the selected Private option",
+      "notes": "The Meshy form showed Private selected while the account was on Pro. Current provider terms should be checked before public distribution."
+    },
+    "technical": {
+      "deliverable_format": "GLB 2.0",
+      "deliverable_sha256": "1da856815671d5f49455afba438383e6b2745c46aceaf012423494c21b6f0e5f",
+      "file_size_bytes": 5014752,
+      "triangle_count": 8044,
+      "vertex_count": 8030,
+      "mesh_count": 1,
+      "material_count": 1,
+      "texture_count": 2,
+      "embedded_image_count": 1,
+      "rig_type": "Meshy Humanoid skin",
+      "skin_count": 1,
+      "animation_clips": ["Running", "Walking"],
+      "runtime_animation": "Walking",
+      "scale_units": "Runtime-normalized to 1.8 Three.js world units tall",
+      "up_axis": "+Y"
+    },
+    "gates": {
+      "concept": {
+        "status": "pass",
+        "evidence": ["Alex approved Candidate B", "Approved turnaround and isolated front, back, and right views"]
+      },
+      "source_quality": {
+        "status": "pass",
+        "evidence": ["Clean humanoid silhouette", "Separate limbs", "No visible extra geometry"]
+      },
+      "rig_and_motion": {
+        "status": "pass",
+        "evidence": ["Automatic joint markers inspected", "Walking preview showed alternating legs and arm swing", "No visible shoulder or knee breakage"]
+      },
+      "engine_import": {
+        "status": "pass",
+        "evidence": ["Vite production build passed", "GLTFLoader loaded the GLB over HTTP", "PlayerVisual found the Walking clip", "Procedural fallback appeared when the GLB was temporarily unavailable"]
+      },
+      "manual_wasd_animation": {
+        "status": "pending",
+        "evidence": [],
+        "notes": "The in-app browser control could not hold a movement key on the canvas. Alex should confirm the walking loop during normal WASD play."
+      }
+    },
+    "outputs": {
+      "engine_asset_path": "public/assets/player/prism-ranger-animated.glb",
+      "prefab_or_equivalent_path": "src/main.js#PlayerVisual",
+      "screenshots_or_turntables": [
+        "docs/assets/evidence/prism-ranger-turnaround.png",
+        "docs/assets/evidence/prism-ranger-front.png",
+        "docs/assets/evidence/prism-ranger-back.png",
+        "docs/assets/evidence/prism-ranger-right.png"
+      ]
+    }
+  },
+  "decision": {
+    "status": "ready-for-user-review",
+    "decided_at": "2026-08-16",
+    "decider": "Codex asset pipeline",
+    "notes": "The generated player, animation, controls ownership, build, restart, and fallback are integrated. Final V5 sign-off waits for Alex's normal WASD play check."
+  }
+}

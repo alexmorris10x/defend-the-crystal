@@ -8,6 +8,7 @@ A small Three.js survival game built as the playable foundation for an AI game-a
 - Aim with the mouse and left-click to fire straight shots.
 - Keep the crystal alive for 60 seconds.
 - Enemies use the Meshy-generated Crystal Brute GLB, with the procedural geometry kept as a load-failure fallback.
+- The player uses the Meshy-generated Prism Ranger GLB and its `Walking` clip, with the original cyan procedural guardian kept as a load-failure fallback.
 
 ## Run locally
 
@@ -39,6 +40,20 @@ The gameplay state, health, movement and collision data stay outside the visual 
 
 The complete generation route, task IDs, mesh statistics, limitations, and evidence are recorded in `docs/assets/crystal-brute.asset-production-record.json` and `docs/assets/crystal-brute-production-notes.md`.
 
+## Player asset contract
+
+`PlayerVisual` in `src/main.js` is the replaceable visual layer for the Prism Ranger GLB.
+
+- Height: 1.8 world units
+- Ground origin: `(0, 0, 0)` at the feet
+- Required animation: `Walking`
+- Runtime movement, mouse aim, firing, and arena limits remain owned by the game code
+- Missing or invalid GLB behavior: show the original procedural cyan guardian
+
+The player asset route and evidence are recorded in `docs/assets/prism-ranger.asset-production-record.json` and `docs/assets/prism-ranger-production-notes.md`.
+
 ## Asset attribution
 
 Crystal Brute: Model created with Meshy – CC BY 4.0 License.
+
+Prism Ranger: original project concept generated as a private Meshy Pro asset. See the production record for the current rights note.
